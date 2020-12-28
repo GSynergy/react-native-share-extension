@@ -12,6 +12,7 @@ NSExtensionContext* extensionContext;
     NSTimer *autoTimer;
     NSString* type;
     NSString* value;
+    NSString* textValue;
 }
 
 - (UIView*) shareView {
@@ -55,19 +56,20 @@ RCT_REMAP_METHOD(data,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self extractDataFromContext: extensionContext withCallback:^(NSString* val, NSString* contentType, NSException* err) {
+    [self extractDataFromContext: extensionContext withCallback:^(NSString* val, NSString* textVal, NSString* contentType, NSException* err) {
         if(err) {
             reject(@"error", err.description, nil);
         } else {
             resolve(@{
                       @"type": contentType,
                       @"value": val
+                      @"textValue": textVal
                       });
         }
     }];
 }
 
-- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSString *value, NSString* contentType, NSException *exception))callback {
+- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSString *value, NSString* textVal, NSString* contentType, NSException *exception))callback {
     @try {
         NSExtensionItem *item = [context.inputItems firstObject];
         NSArray *attachments = item.attachments;
@@ -94,7 +96,7 @@ RCT_REMAP_METHOD(data,
                 NSURL *url = (NSURL *)item;
 
                 if(callback) {
-                    callback([url absoluteString], @"text/plain", nil);
+                    callback([url absoluteString], nil, @"text/plain", nil);
                 }
             }];
         } else if (imageProvider) {
@@ -102,7 +104,7 @@ RCT_REMAP_METHOD(data,
                 NSURL *url = (NSURL *)item;
 
                 if(callback) {
-                    callback([url absoluteString], [[[url absoluteString] pathExtension] lowercaseString], nil);
+                    callback([url absoluteString], nil, [[[url absoluteString] pathExtension] lowercaseString], nil);
                 }
             }];
         } else if (textProvider) {
@@ -110,7 +112,7 @@ RCT_REMAP_METHOD(data,
                 NSString *text = (NSString *)item;
 
                 if(callback) {
-                    callback(text, @"text/plain", nil);
+                    callback(nil, text, @"text/plain", nil);
                 }
             }];
         } else {
