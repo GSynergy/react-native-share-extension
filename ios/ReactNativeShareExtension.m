@@ -4,7 +4,7 @@
 
 #define URL_IDENTIFIER @"public.url"
 #define IMAGE_IDENTIFIER @"public.image"
-#define TEXT_IDENTIFIER (NSString *)kUTTypePlainText
+#define TEXT_IDENTIFIER (NSString *)kUTTypeCommaSeparatedText
 
 NSExtensionContext* extensionContext;
 
