@@ -2,8 +2,10 @@
 #import "React/RCTRootView.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 
-#define URL_IDENTIFIER @"public.url"
+#define URL_IDENTIFIER (NSString *) kUTTypeURL
 #define IMAGE_IDENTIFIER @"public.image"
+#define KML_IDENTIFIER @"public.kml"
+#define VCARD_IDENTIFIER (NSString *) kUTTypeVCard
 #define TEXT_IDENTIFIER (NSString *)kUTTypeText
 
 NSExtensionContext* extensionContext;
@@ -67,6 +69,21 @@ RCT_REMAP_METHOD(data,
     }];
 }
 
+- (NSString*) getTmpDirectory {
+    NSURL *fileManagerURL = [[NSFileManager defaultManager] containerURLForSecurityApplicationGroupIdentifier:@"group.9MHWRUP8A8.com.gsynergy.finds"];
+    NSString *TMP_DIRECTORY = [NSString stringWithFormat:@"%@/react-native-share-extension/", fileManagerURL.path];
+//    NSString *tmpFullPath = [NSTemporaryDirectory() stringByAppendingString:TMP_DIRECTORY];
+    
+    BOOL isDir;
+    BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:TMP_DIRECTORY isDirectory:&isDir];
+    if (!exists) {
+        [[NSFileManager defaultManager] createDirectoryAtPath: TMP_DIRECTORY
+                                  withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+        
+    return TMP_DIRECTORY;
+}
+
 - (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSString *value, NSString* contentType, NSException *exception))callback {
     @try {
         NSExtensionItem *item = [context.inputItems firstObject];
@@ -75,37 +92,97 @@ RCT_REMAP_METHOD(data,
         __block NSItemProvider *urlProvider = nil;
         __block NSItemProvider *imageProvider = nil;
         __block NSItemProvider *textProvider = nil;
+        __block NSItemProvider *vCardProvider = nil;
+        __block NSItemProvider *kmlProvider = nil;
 
         [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
-            if([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
-                urlProvider = provider;
+            if([provider hasItemConformingToTypeIdentifier:KML_IDENTIFIER]) {
+                kmlProvider = provider;
                 *stop = YES;
-            } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
+            }
+            else if([provider hasItemConformingToTypeIdentifier:VCARD_IDENTIFIER]) {
+                vCardProvider = provider;
+//                *stop = YES;
+            }
+            else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
                 *stop = YES;
             }
+            else if([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
+                urlProvider = provider;
+//                *stop = YES;
+            }
+            else if ([provider hasItemConformingToTypeIdentifier:TEXT_IDENTIFIER]){
+                 textProvider = provider;
+//                 *stop = YES;
+             }
         }];
         
-       // for text support we can use this, but we have to do some research in object c, how it works.
-       // else if ([provider hasItemConformingToTypeIdentifier:TEXT_IDENTIFIER]){
-       //     textProvider = provider;
-       //     *stop = YES;
-       // }
-        
-        if(urlProvider) {
-            [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                NSURL *url = (NSURL *)item;
-
-                if(callback) {
-                    callback([url absoluteString], @"text/plain", nil);
+        if(kmlProvider) {
+            [kmlProvider loadItemForTypeIdentifier:KML_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+               NSURL *url = (NSURL *)item;
+            
+               NSError *writeError;
+               NSData *data = [NSData dataWithContentsOfURL:url options:nil error:&writeError];
+    
+               NSString *tmpDirFullPath = [self getTmpDirectory];
+               NSString *filePath = [tmpDirFullPath stringByAppendingString:[[NSUUID UUID] UUIDString]];
+               filePath = [filePath stringByAppendingString:@".kml"];
+                               
+              // save file
+              BOOL status = [data writeToFile:filePath atomically:YES];
+               if (!status) {
+                    callback(@"failed to write",@"error",nil);
                 }
+                if(callback) {
+                    callback(filePath,[filePath pathExtension], nil);
+               }
             }];
         } else if (imageProvider) {
             [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
                 NSURL *url = (NSURL *)item;
+               
+                NSError *writeError;
+                NSData *data = [NSData dataWithContentsOfURL:url options:nil error:&writeError];
+                
+                NSString *tmpDirFullPath = [self getTmpDirectory];
+                NSString *filePath = [tmpDirFullPath stringByAppendingString:[[NSUUID UUID] UUIDString]];
+                NSString *extension = [[[url absoluteString] pathExtension] lowercaseString];
+                filePath = [filePath stringByAppendingString:[NSString stringWithFormat:@".%@",extension]];
+                
+                BOOL status = [data writeToFile:filePath atomically:YES];
+                if (!status) {
+                    callback(@"failed to write",@"error",nil);
+                }
 
                 if(callback) {
-                    callback([url absoluteString], [[[url absoluteString] pathExtension] lowercaseString], nil);
+                    callback(filePath, [[[url absoluteString] pathExtension] lowercaseString], nil);
+                }
+            }];
+        } else if(urlProvider) {
+            [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                NSURL *url = (NSURL *)item;
+                
+
+                if(callback) {
+                    callback([url absoluteString],@"text/plain", nil);
+                }
+            }];
+        } else if(vCardProvider) {
+            [vCardProvider loadItemForTypeIdentifier:VCARD_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                NSData *data = (NSData *)item;
+             
+                NSString *tmpDirFullPath = [self getTmpDirectory];
+                NSString *filePath = [tmpDirFullPath stringByAppendingString:[[NSUUID UUID] UUIDString]];
+                filePath = [filePath stringByAppendingString:@".vcf"];
+                
+                // save file
+                BOOL status = [data writeToFile:filePath atomically:YES];
+                if (!status) {
+                    callback(@"failed to write",@"error",nil);
+                }
+                if(callback) {
+                    callback(filePath,[filePath pathExtension], nil);
                 }
             }];
         } else if (textProvider) {
